@@ -47,34 +47,21 @@ async function seedDatabase(): Promise<void> {
         throw new Error(`Seed team "${data.team}" was not created`);
       }
 
-      const existingUser = await user.findOne({ username: data.username }).exec();
-      const seededUser =
-        existingUser ??
-        (await user.create({
+      let seededUser = await user.findOne({ username: data.username }).exec();
+      if (seededUser) {
+        seededUser.name = data.name;
+        seededUser.email = data.email;
+        seededUser.team = teamId;
+        await seededUser.save();
+      } else {
+        seededUser = await user.create({
           username: data.username,
           name: data.name,
           email: data.email,
           team: teamId,
-        }));
-
-      if (!existingUser) {
-        continue;
+        });
       }
-
-      existingUser.name = data.name;
-      existingUser.email = data.email;
-      existingUser.team = teamId;
-      await existingUser.save();
-      userIds.set(data.username, existingUser._id);
-      continue;
-    }
-
-    for (const data of userData) {
-      const existingUser = await user.findOne({ username: data.username }).exec();
-      if (!existingUser) {
-        throw new Error(`Seed user "${data.username}" was not created`);
-      }
-      userIds.set(data.username, existingUser._id);
+      userIds.set(data.username, seededUser._id);
     }
 
     for (const data of teamData) {
