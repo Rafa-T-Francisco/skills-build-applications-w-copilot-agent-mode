@@ -1,5 +1,5 @@
 import express, { type ErrorRequestHandler } from 'express';
-import { connectToDatabase } from './config/database';
+import { connectDatabase } from './config/database';
 import apiRouter from './routes/api';
 
 const port = Number(process.env.PORT) || 8000;
@@ -16,7 +16,7 @@ app.get('/api/health', (_request, response) => {
   response.json({ status: 'ok', service: 'octofit-tracker-api', apiBaseUrl });
 });
 
-app.use('/api', apiRouter);
+app.use(apiRouter);
 
 app.use('/api', (_request, response) => {
   response.status(404).json({ error: 'API endpoint not found' });
@@ -30,7 +30,7 @@ const errorHandler: ErrorRequestHandler = (error: unknown, _request, response, _
 app.use(errorHandler);
 
 export async function startServer(): Promise<void> {
-  await connectToDatabase();
+  await connectDatabase();
 
   await new Promise<void>((resolve, reject) => {
     const server = app.listen(port, '0.0.0.0', () => {

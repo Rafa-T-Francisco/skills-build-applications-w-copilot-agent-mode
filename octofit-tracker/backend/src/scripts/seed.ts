@@ -1,13 +1,17 @@
 import mongoose from 'mongoose';
-import { connectToDatabase } from '../config/database';
-import { Activity, Leaderboard, Team, User, Workout } from '../models';
+import { connectDatabase } from '../config/database';
+import activity from '../models/activity';
+import leaderboard from '../models/leaderboard';
+import team from '../models/team';
+import user from '../models/user';
+import workout from '../models/workout';
 
 /**
  * Seed the octofit_db database with test data
  */
-async function seedDatabase() {
+async function seedDatabase(): Promise<void> {
   try {
-    await connectToDatabase();
+    await connectDatabase();
 
     const teamData = [
       {
@@ -21,15 +25,12 @@ async function seedDatabase() {
         points: 540,
       },
     ];
-    const teams = new Map<string, (typeof Team.prototype)>();
+    const teamIds = new Map<string, mongoose.Types.ObjectId>();
 
     for (const data of teamData) {
-      const team = await Team.findOneAndUpdate(
-        { name: data.name },
-        { $set: data },
-        { new: true, upsert: true, setDefaultsOnInsert: true },
-      ).exec();
-      teams.set(data.name, team);
+      const existingTeam = await team.findOne({ name: data.name }).exec();
+      const seededTeam = existingTeam ?? (await team.create(data));
+      teamIds.set(data.name, seededTeam._id);
     }
 
     const userData = [
@@ -38,39 +39,59 @@ async function seedDatabase() {
       { username: 'amina.hassan', name: 'Amina Hassan', email: 'amina.hassan@example.com', team: 'Power Paddlers' },
       { username: 'noah.williams', name: 'Noah Williams', email: 'noah.williams@example.com', team: 'Power Paddlers' },
     ];
-    const users = new Map<string, (typeof User.prototype)>();
+    const userIds = new Map<string, mongoose.Types.ObjectId>();
 
     for (const data of userData) {
-      const team = teams.get(data.team);
-      if (!team) {
+      const teamId = teamIds.get(data.team);
+      if (!teamId) {
         throw new Error(`Seed team "${data.team}" was not created`);
       }
 
-      const user = await User.findOneAndUpdate(
-        { username: data.username },
-        { $set: { name: data.name, email: data.email, team: team._id } },
-        { new: true, upsert: true, setDefaultsOnInsert: true },
-      ).exec();
-      users.set(data.username, user);
-    }
+      const existingUser = await user.findOne({ username: data.username }).exec();
+      const seededUser =
+        existingUser ??
+        (await user.create({
+          username: data.username,
+          name: data.name,
+          email: data.email,
+          team: teamId,
+        }));
 
-    for (const teamDataEntry of teamData) {
-      const team = teams.get(teamDataEntry.name);
-      if (!team) {
-        throw new Error(`Seed team "${teamDataEntry.name}" was not created`);
+      if (!existingUser) {
+        continue;
       }
 
-      const memberIds = userData
-        .filter((user) => user.team === teamDataEntry.name)
-        .map((user) => {
-          const seededUser = users.get(user.username);
-          if (!seededUser) {
-            throw new Error(`Seed user "${user.username}" was not created`);
-          }
-          return seededUser._id;
-        });
+      existingUser.name = data.name;
+      existingUser.email = data.email;
+      existingUser.team = teamId;
+      await existingUser.save();
+      userIds.set(data.username, existingUser._id);
+      continue;
+    }
 
-      await Team.updateOne({ _id: team._id }, { $set: { members: memberIds } }).exec();
+    for (const data of userData) {
+      const existingUser = await user.findOne({ username: data.username }).exec();
+      if (!existingUser) {
+        throw new Error(`Seed user "${data.username}" was not created`);
+      }
+      userIds.set(data.username, existingUser._id);
+    }
+
+    for (const data of teamData) {
+      const teamId = teamIds.get(data.name);
+      if (!teamId) {
+        throw new Error(`Seed team "${data.name}" was not created`);
+      }
+      const memberIds = userData
+        .filter((member) => member.team === data.name)
+        .map((member) => {
+          const userId = userIds.get(member.username);
+          if (!userId) {
+            throw new Error(`Seed user "${member.username}" was not created`);
+          }
+          return userId;
+        });
+      await team.updateOne({ _id: teamId }, { $set: { members: memberIds } }).exec();
     }
 
     const activityData = [
@@ -85,25 +106,30 @@ async function seedDatabase() {
     ];
 
     for (const data of activityData) {
-      const user = users.get(data.username);
-      if (!user) {
+      const userId = userIds.get(data.username);
+      const userDataEntry = userData.find((entry) => entry.username === data.username);
+      const teamId = userDataEntry ? teamIds.get(userDataEntry.team) : undefined;
+      if (!userId || !teamId) {
         throw new Error(`Seed user "${data.username}" was not created`);
       }
 
-      const activityDate = new Date(`${data.date}T12:00:00.000Z`);
-      await Activity.updateOne(
-        { user: user._id, type: data.type, date: activityDate },
-        {
-          $set: {
-            team: user.team,
-            activityType: data.type,
-            duration: data.duration,
-            durationMinutes: data.duration,
-            points: data.points,
-          },
-        },
-        { upsert: true, setDefaultsOnInsert: true },
-      ).exec();
+      const date = new Date(`${data.date}T12:00:00.000Z`);
+      const existingActivity = await activity
+        .findOne({ user: userId, type: data.type, date })
+        .exec();
+
+      if (!existingActivity) {
+        await activity.create({
+          user: userId,
+          team: teamId,
+          type: data.type,
+          activityType: data.type,
+          duration: data.duration,
+          durationMinutes: data.duration,
+          points: data.points,
+          date,
+        });
+      }
     }
 
     const leaderboardData = [
@@ -114,16 +140,21 @@ async function seedDatabase() {
     ];
 
     for (const data of leaderboardData) {
-      const user = users.get(data.username);
-      if (!user) {
+      const userId = userIds.get(data.username);
+      const userDataEntry = userData.find((entry) => entry.username === data.username);
+      const teamId = userDataEntry ? teamIds.get(userDataEntry.team) : undefined;
+      if (!userId || !teamId) {
         throw new Error(`Seed user "${data.username}" was not created`);
       }
 
-      await Leaderboard.updateOne(
-        { user: user._id, team: user.team },
-        { $set: { points: data.points, rank: data.rank } },
-        { upsert: true, setDefaultsOnInsert: true },
-      ).exec();
+      const existingEntry = await leaderboard.findOne({ user: userId, team: teamId }).exec();
+      if (existingEntry) {
+        existingEntry.points = data.points;
+        existingEntry.rank = data.rank;
+        await existingEntry.save();
+      } else {
+        await leaderboard.create({ user: userId, team: teamId, points: data.points, rank: data.rank });
+      }
     }
 
     const workoutData = [
@@ -170,27 +201,25 @@ async function seedDatabase() {
     ];
 
     for (const data of workoutData) {
-      const user = users.get(data.username);
-      if (!user) {
+      const userId = userIds.get(data.username);
+      if (!userId) {
         throw new Error(`Seed user "${data.username}" was not created`);
       }
 
-      await Workout.updateOne(
-        { name: data.name },
-        {
-          $set: {
-            user: user._id,
-            title: data.name,
-            description: data.description,
-            difficulty: data.difficulty,
-            duration: data.duration,
-            durationMinutes: data.duration,
-            category: data.category,
-            activityType: data.category,
-          },
-        },
-        { upsert: true, setDefaultsOnInsert: true },
-      ).exec();
+      const existingWorkout = await workout.findOne({ name: data.name }).exec();
+      if (!existingWorkout) {
+        await workout.create({
+          user: userId,
+          name: data.name,
+          title: data.name,
+          description: data.description,
+          difficulty: data.difficulty,
+          duration: data.duration,
+          durationMinutes: data.duration,
+          category: data.category,
+          activityType: data.category,
+        });
+      }
     }
 
     console.log('Database seeding complete');
