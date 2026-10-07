@@ -1,34 +1,60 @@
+import { Navigate, NavLink, Route, Routes } from 'react-router-dom'
+import Activities from './components/Activities.jsx'
+import Leaderboard from './components/Leaderboard.jsx'
+import Teams from './components/Teams.jsx'
+import Users from './components/Users.jsx'
+import Workouts from './components/Workouts.jsx'
+
+const pages = [
+  { label: 'Activities', path: '/activities' },
+  { label: 'Leaderboard', path: '/leaderboard' },
+  { label: 'Teams', path: '/teams' },
+  { label: 'Users', path: '/users' },
+  { label: 'Workouts', path: '/workouts' },
+]
+
 function App() {
   return (
-    <main className="container py-5">
-      <header className="mb-5">
-        <h1 className="display-5 fw-bold">OctoFit Tracker</h1>
-        <p className="lead text-body-secondary">
-          Your fitness journey, your team, your leaderboard.
-        </p>
+    <div className="app-shell">
+      <header className="navbar navbar-expand-lg navbar-dark app-navbar">
+        <div className="container">
+          <NavLink className="navbar-brand d-flex align-items-center gap-2" to="/activities">
+            <img className="brand-logo" src="/octofit-logo.png" alt="" />
+            <span>OctoFit Tracker</span>
+          </NavLink>
+          <nav className="nav app-nav" aria-label="Main navigation">
+            {pages.map(({ label, path }) => (
+              <NavLink
+                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                key={path}
+                to={path}
+              >
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+        </div>
       </header>
 
-      <section className="row g-4" aria-label="OctoFit features">
-        {['Activities', 'Teams', 'Leaderboard', 'Workouts'].map((feature) => (
-          <div className="col-12 col-sm-6 col-lg-3" key={feature}>
-            <article className="card h-100 shadow-sm">
-              <div className="card-body">
-                <h2 className="h5 card-title">{feature}</h2>
-                <p className="card-text text-body-secondary">
-                  {feature === 'Activities'
-                    ? 'Log and track your progress.'
-                    : feature === 'Teams'
-                      ? 'Reach your goals together.'
-                      : feature === 'Leaderboard'
-                        ? 'Celebrate your team’s achievements.'
-                        : 'Find your next personalized workout.'}
-                </p>
-              </div>
-            </article>
-          </div>
-        ))}
-      </section>
-    </main>
+      <main className="container py-5">
+        <div className="mb-4">
+          <p className="text-uppercase small fw-semibold text-success mb-2">Move together</p>
+          <h1 className="display-6 fw-bold mb-2">Your fitness, in focus.</h1>
+          <p className="text-body-secondary mb-0">
+            Track progress, support your team, and celebrate every milestone.
+          </p>
+        </div>
+        <Routes>
+          <Route path="/" element={<Navigate replace to="/activities" />} />
+          <Route path="/activities" element={<Activities />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/teams" element={<Teams />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/workouts" element={<Workouts />} />
+          <Route path="*" element={<Navigate replace to="/activities" />} />
+        </Routes>
+      </main>
+    </div>
   )
 }
 
